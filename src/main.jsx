@@ -1,5 +1,16 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { Button } from '@ui-sdk/react/button'
+import { DatePicker, DatePickerContent, DatePickerInput, DatePickerTrigger } from '@ui-sdk/react/date-picker'
+import { Field, FieldLabel } from '@ui-sdk/react/field'
+import { Input } from '@ui-sdk/react/input'
+import {
+  ScrollArea, ScrollAreaContent, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport,
+} from '@ui-sdk/react/scroll-area'
+import { Select, SelectContent, SelectTrigger, SelectValue } from '@ui-sdk/react/select'
+import { Textarea } from '@ui-sdk/react/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@ui-sdk/react/tooltip'
+import { LoadingStatus } from './loading-status.jsx'
 import '@ui-sdk/core/web.css'
 import './styles.css'
 
@@ -44,19 +55,20 @@ function Mark() {
 
 function ScrollableRows({ as: List, label, className = '', visibleRowLimit = 5, children }) {
   const listRef = useRef(null)
+  const viewportRef = useRef(null)
   const canScroll = children.length > visibleRowLimit
 
   useLayoutEffect(() => {
-    const list = listRef.current
+    const viewport = viewportRef.current
     if (!canScroll) {
-      list.style.removeProperty('max-height')
+      viewport.style.removeProperty('max-height')
       return
     }
 
-    const visibleRows = Array.from(list.children).slice(0, visibleRowLimit)
+    const visibleRows = Array.from(listRef.current.children).slice(0, visibleRowLimit)
     function updateHeight() {
       const height = visibleRows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0)
-      list.style.maxHeight = `${height}px`
+      viewport.style.maxHeight = `${height}px`
     }
 
     updateHeight()
@@ -66,10 +78,16 @@ function ScrollableRows({ as: List, label, className = '', visibleRowLimit = 5, 
   }, [canScroll, visibleRowLimit, children])
 
   return (
-    <List ref={listRef} className={canScroll ? `${className} scrollable-rows`.trim() : className}
-      tabIndex={canScroll ? 0 : undefined} aria-label={canScroll ? label : undefined}>
-      {children}
-    </List>
+    <ScrollArea className="row-scroll-area" type="auto">
+      <ScrollAreaViewport ref={viewportRef} className={canScroll ? 'scrollable-rows' : undefined}
+        role={canScroll ? 'region' : undefined} aria-label={canScroll ? label : undefined}
+        tabIndex={canScroll ? 0 : undefined}>
+        <ScrollAreaContent ref={listRef} render={<List />} className={className}>
+          {children}
+        </ScrollAreaContent>
+      </ScrollAreaViewport>
+      {canScroll && <ScrollAreaScrollbar orientation="vertical"><ScrollAreaThumb /></ScrollAreaScrollbar>}
+    </ScrollArea>
   )
 }
 
@@ -83,12 +101,30 @@ function CollectionLists({ groups }) {
             {items.map(item => {
               const query = new URLSearchParams({ collection, id: item.id })
               if (item.bsonId) query.set('bsonId', item.bsonId)
-              return <li key={item.bsonId ?? item.id}><a href={`/record?${query}`}>{item.description ?? item.id}</a></li>
+              return (
+                <li key={item.bsonId ?? item.id}>
+                  <Button render={<a href={`/record?${query}`} />}>{item.description ?? item.id}</Button>
+                </li>
+              )
             })}
           </ScrollableRows>
         </section>
       ))}
     </div>
+  )
+}
+
+function PropertySelect({ label, optional, ...props }) {
+  return (
+    <Field className="property-select">
+      <FieldLabel>{label}{optional && <small>Optional</small>}</FieldLabel>
+      <Select {...props}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="property-options" align="start" sideOffset={4} />
+      </Select>
+    </Field>
   )
 }
 
@@ -102,6 +138,14 @@ function SearchPage() {
   const buildingId = building?._id ?? ''
   const unit = building?.units?.find(item => item.id === unitId)
   const scope = unit ? `${building.name || building.address} · ${unit.label}` : building?.name || building?.address
+  const buildingOptions = (buildings.data ?? []).map(item => ({
+    value: item._id,
+    label: item.name && item.address ? `${item.name} · ${item.address}` : item.name || item.address,
+  }))
+  const unitOptions = [{ value: '', label: 'Whole building' }, ...(building?.units ?? []).map(item => ({
+    value: item.id,
+    label: item.label,
+  }))]
 
   async function search(event) {
     event.preventDefault()
@@ -124,40 +168,28 @@ function SearchPage() {
       </section>
 
       <form className="panel search" onSubmit={search} aria-label="Inventory search">
-        <label>
-          <span>Building</span>
-          <select required value={buildingId} disabled={!buildings.data?.length || results?.loading}
-            onChange={event => {
-              setSelectedBuildingId(event.target.value)
-              setUnitId('')
-              setResults(null)
-            }}>
-            <option value="">{buildings.loading ? 'Loading buildings…' : 'Select a building'}</option>
-            {buildings.data?.map(item => (
-              <option key={item._id} value={item._id}>
-                {item.name || item.address}{item.name && item.address ? ` · ${item.address}` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Unit <small>Optional</small></span>
-          <select value={unitId} disabled={!building?.units?.length || results?.loading}
-            onChange={event => {
-              setUnitId(event.target.value)
-              setResults(null)
-            }}>
-            <option value="">Whole building</option>
-            {building?.units?.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
-        </label>
-        <button disabled={!buildingId || results?.loading}>{results?.loading ? 'Searching…' : 'Search'}</button>
+        <PropertySelect label="Building" name="buildingId" required value={buildingId || null}
+          placeholder={buildings.loading ? 'Loading buildings…' : 'Select a building'}
+          items={buildings.data?.length ? [{ value: '', label: 'Select a building' }, ...buildingOptions] : []}
+          disabled={!buildings.data?.length || results?.loading} onValueChange={value => {
+            setSelectedBuildingId(value ?? '')
+            setUnitId('')
+            setResults(null)
+          }} />
+        <PropertySelect label="Unit" optional name="unitId" value={unitId} items={unitOptions}
+          disabled={!building?.units?.length || results?.loading} onValueChange={value => {
+            setUnitId(value ?? '')
+            setResults(null)
+          }} />
+        <Button type="submit" disabled={!buildingId || results?.loading}>
+          {results?.loading ? 'Searching…' : 'Search'}
+        </Button>
       </form>
 
       {buildings.error && <p className="error" role="alert">{buildings.error}</p>}
       {buildings.data?.length === 0 && <p role="status">No buildings found.</p>}
       {results?.error && <p className="error" role="alert">{results.error}</p>}
-      {results?.loading && <p role="status" className="feedback">Searching inventory…</p>}
+      {results?.loading && <LoadingStatus className="feedback">Searching inventory…</LoadingStatus>}
       {results?.groups && (
         <section className="results" aria-labelledby="results-heading" aria-live="polite">
           <h2 id="results-heading">{scope}</h2>
@@ -173,7 +205,8 @@ function RecordFieldEditor({ name, editText, date, recordUrl, onSave, onCancel }
   const adding = name === undefined
   const isDate = typeof date === 'string'
   const [draftName, setDraftName] = useState('')
-  const [draft, setDraft] = useState(date ?? editText ?? '')
+  const [draft, setDraft] = useState(editText ?? '')
+  const [calendarOpen, setCalendarOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
@@ -185,6 +218,7 @@ function RecordFieldEditor({ name, editText, date, recordUrl, onSave, onCancel }
       setError('Enter an attribute name.')
       return
     }
+    const text = isDate ? new FormData(event.currentTarget).get('calendarDate') : draft
     setSaving(true)
     setError(null)
     try {
@@ -194,7 +228,7 @@ function RecordFieldEditor({ name, editText, date, recordUrl, onSave, onCancel }
         body: JSON.stringify({
           name: fieldName,
           original: editText ?? null,
-          text: draft,
+          text,
           ...(isDate && { calendarDate: true }),
         }),
       })
@@ -208,33 +242,54 @@ function RecordFieldEditor({ name, editText, date, recordUrl, onSave, onCancel }
 
   return (
     <form className={adding ? 'field-add-row' : undefined} onSubmit={save} onKeyDown={event => {
-      if (event.key === 'Escape' && !saving) onCancel()
+      if (event.key === 'Escape' && !event.defaultPrevented && !calendarOpen && !saving) onCancel()
     }}>
       {adding && (
-        <input type="text" aria-label="Attribute name" placeholder="Attribute name" value={draftName}
-          autoFocus required readOnly={saving} onChange={event => setDraftName(event.target.value)} />
+        <Field>
+          <FieldLabel className="visually-hidden">Attribute name</FieldLabel>
+          <Input placeholder="Attribute name" value={draftName}
+            autoFocus required readOnly={saving} onValueChange={setDraftName} />
+        </Field>
       )}
       <div className="field-editor field-editor-active">
-        {isDate ? (
-          <input type="date" aria-label={`Edit ${name}`} value={draft} autoFocus required readOnly={saving}
-            onChange={event => setDraft(event.target.value)} />
-        ) : (
-          <textarea aria-label={adding ? 'Attribute value' : `Edit ${name}`}
-            placeholder={adding ? 'Attribute value' : undefined} value={draft}
-            rows={editText?.includes('\n') ? 5 : 1} autoFocus={!adding} readOnly={saving}
-            onChange={event => setDraft(event.target.value)} />
-        )}
+        <Field>
+          <FieldLabel className="visually-hidden">{adding ? 'Attribute value' : `Edit ${name}`}</FieldLabel>
+          {isDate ? (
+            <DatePicker name="calendarDate" defaultValue={date} required disabled={saving}
+              timeZone="America/New_York" open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <DatePickerInput autoFocus />
+              <DatePickerTrigger aria-label={`Choose date for ${name}`} />
+              <DatePickerContent sideOffset={4} />
+            </DatePicker>
+          ) : (
+            <Textarea placeholder={adding ? 'Attribute value' : undefined} value={draft}
+              rows={editText?.includes('\n') ? 5 : 1} autoFocus={!adding} readOnly={saving}
+              onValueChange={setDraft} />
+          )}
+        </Field>
         <div className="field-actions">
-          <button type="button" className="field-cancel"
+          <Button type="button" className="field-cancel"
             aria-label={adding ? 'Cancel adding attribute' : `Cancel editing ${name}`}
-            disabled={saving} onClick={onCancel}>Cancel</button>
-          <button className="field-save" aria-label={adding ? 'Save new attribute' : `Save ${name}`} disabled={saving}>
+            disabled={saving} onClick={onCancel}>Cancel</Button>
+          <Button type="submit" className="field-save" aria-label={adding ? 'Save new attribute' : `Save ${name}`}
+            disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </div>
         {error && <p className="error" role="alert">{error}</p>}
       </div>
     </form>
+  )
+}
+
+function AttributeButton({ label, className, disabled, onClick, children }) {
+  return (
+    <Tooltip type="label">
+      <TooltipTrigger render={<Button className={className} disabled={disabled} onClick={onClick} />}>
+        <span aria-hidden="true">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -248,10 +303,7 @@ function RecordField({ name, value, onEdit, children }) {
         {children ?? (onEdit ? (
           <div className="field-editor">
             <div>{display}</div>
-            <button className="field-edit" type="button" aria-label={`Edit ${name}`}
-              title={`Edit ${name}`} onClick={onEdit}>
-              <span aria-hidden="true">✎</span>
-            </button>
+            <AttributeButton className="field-edit" label={`Edit ${name}`} onClick={onEdit}>✎</AttributeButton>
           </div>
         ) : display)}
       </dd>
@@ -264,7 +316,7 @@ function RelatedRecords() {
   return (
     <section className="results" aria-labelledby="related-records-heading" aria-live="polite">
       <h2 id="related-records-heading">Related records</h2>
-      {loading && <p role="status">Loading related records…</p>}
+      {loading && <LoadingStatus>Loading related records…</LoadingStatus>}
       {error && <p className="error" role="alert">Could not load related records.</p>}
       {groups?.length === 0 && <p className="panel feedback">No related records found.</p>}
       {groups?.length > 0 && <CollectionLists groups={groups} />}
@@ -293,18 +345,18 @@ function RecordPage() {
 
   return (
     <>
-      <a className="back" href="/">Browse inventory</a>
+      <Button className="back" render={<a href="/" />}>Browse inventory</Button>
       <section className="intro">
         <h1>{data ? (savedFields.description?.value ?? data.description ?? query.get('id')) : 'Record details'}</h1>
         {collection && <p>{collection}</p>}
       </section>
-      {loading && <p role="status">Loading record…</p>}
+      {loading && <LoadingStatus>Loading record…</LoadingStatus>}
       {error && <p className="error" role="alert">{error}</p>}
       {data && (
         <>
           <div className="fields-toolbar">
-            <button type="button" className="field-add" aria-label="Add attribute" title="Add attribute"
-              disabled={editingField !== null} onClick={() => setEditingField(newAttribute)}>+</button>
+            <AttributeButton className="field-add" label="Add attribute"
+              disabled={editingField !== null} onClick={() => setEditingField(newAttribute)}>+</AttributeButton>
           </div>
           <div className="panel">
             <ScrollableRows as="dl" label="Record fields" className="fields" visibleRowLimit={10}>
@@ -340,10 +392,14 @@ const page = window.location.pathname === '/record' ? <RecordPage /> : <SearchPa
 
 createRoot(document.getElementById('root')).render(
   <>
-    <header><div className="shell"><a className="brand" href="/"><Mark />Property Inventory</a></div></header>
+    <header>
+      <div className="shell">
+        <Button className="brand" render={<a href="/" />}><Mark />Property Inventory</Button>
+      </div>
+    </header>
     <main className="shell">
       {renderBuild ? (
-        <Suspense fallback={<p role="status">Loading sign-in…</p>}>
+        <Suspense fallback={<LoadingStatus>Loading sign-in…</LoadingStatus>}>
           <FirebaseAccess>{page}</FirebaseAccess>
         </Suspense>
       ) : page}

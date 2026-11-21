@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import { Button } from '@ui-sdk/react/button'
 import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth'
+import { LoadingStatus } from './loading-status.jsx'
 
 let auth
 
@@ -21,7 +23,6 @@ export async function inventoryAuthorization() {
 
 export default function FirebaseAccess({ children }) {
   const [session, setSession] = useState({ loading: true })
-  const [actionPending, setActionPending] = useState(false)
   const [actionError, setActionError] = useState('')
 
   useEffect(() => {
@@ -66,7 +67,6 @@ export default function FirebaseAccess({ children }) {
   }, [])
 
   async function changeAccount() {
-    setActionPending(true)
     setActionError('')
     try {
       if (session.user) {
@@ -78,12 +78,10 @@ export default function FirebaseAccess({ children }) {
       }
     } catch {
       setActionError(session.user ? 'Could not sign out. Try again.' : 'Could not sign in. Try again.')
-    } finally {
-      setActionPending(false)
     }
   }
 
-  if (session.loading) return <p role="status">Checking inventory access…</p>
+  if (session.loading) return <LoadingStatus>Checking inventory access…</LoadingStatus>
 
   return (
     <>
@@ -92,9 +90,9 @@ export default function FirebaseAccess({ children }) {
         {session.user && <p>{session.user.email}</p>}
         {(session.error || actionError) && <p className="error" role="alert">{actionError || session.error}</p>}
         {session.auth && (
-          <button type="button" disabled={actionPending} onClick={changeAccount}>
+          <Button onClick={changeAccount} pendingAnnouncement={session.user ? 'Signing out' : 'Signing in'}>
             {session.user ? 'Sign out' : 'Sign in with Google'}
-          </button>
+          </Button>
         )}
       </div>
       {session.authorized && children}
