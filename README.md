@@ -11,6 +11,24 @@ A React website with an Express backend for the `real_estate_management` databas
 
 The server listens on loopback. A record link such as `/record?collection=inspections&id=inspection-123` works directly on the same app instance. Sharing links across machines requires a shared host with authenticated access to the inventory.
 
+## Run the site and API together on Render
+
+Create one Node Web Service on the Free plan. Express serves the React app and `/api` under the same domain. Use the existing `bubbles-real-estate-manager` Firebase project for Google sign-in.
+
+| Setting | Value |
+| --- | --- |
+| Build command | `npm ci && npm run build:render` |
+| Start command | `node server/render.js` |
+| Health check path | `/healthz` |
+
+Add these environment variables in Render:
+
+- `MONGODB_URI` holds the Atlas connection string.
+- `INVENTORY_ALLOWED_EMAILS` holds a comma-separated list of approved Google account email addresses.
+- `VITE_FIREBASE_PROJECT_ID` and `VITE_FIREBASE_API_KEY` come from the Firebase web app configuration in Project settings. These two values are public web configuration.
+
+In Firebase Authentication, add the Render hostname and any custom frontend hostname under **Settings → Authorized domains**. In Atlas Network Access, add the outbound IP ranges shown under **Connect → Outbound** for the Render service. Verify that a signed-out `/api/access` request returns HTTP 401, then sign in as an approved user and run a search.
+
 ## Search behavior
 
 - Buildings and standalone units load as dropdown options. A `building_unit` relationship determines which building a unit belongs to. The inventory query runs on form submission.

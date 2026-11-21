@@ -12,8 +12,9 @@ const propertyRelationships = {
   buildingRecord: 'property_building',
   unitRecord: 'property_unit',
 }
+const inventoryTimeZone = 'America/New_York'
 const easternDate = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/New_York',
+  timeZone: inventoryTimeZone,
   month: 'short',
   day: 'numeric',
   year: 'numeric',
@@ -22,6 +23,45 @@ const easternDate = new Intl.DateTimeFormat('en-US', {
   second: '2-digit',
   timeZoneName: 'short',
 })
+const easternOffset = new Intl.DateTimeFormat('en-US', {
+  timeZone: inventoryTimeZone,
+  timeZoneName: 'longOffset',
+})
+const dayInMilliseconds = 86_400_000
+const calendarDatePattern = /^\d{4}-\d{2}-\d{2}$/
+
+function offsetAt(timestamp) {
+  const offset = easternOffset.formatToParts(timestamp).find(part => part.type === 'timeZoneName').value
+  const [, sign, hours, minutes, seconds = '0'] = /^GMT([+-])(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(offset)
+  return (sign === '-' ? -1 : 1) * (Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds)) * 1000
+}
+
+function datePickerValue(value) {
+  if (!(value instanceof Date)) return null
+  const wallTime = new Date(value.getTime() + offsetAt(value.getTime()))
+  if (!Number.isFinite(wallTime.getTime())) return null
+  const calendarDate = wallTime.toISOString().split('T')[0]
+  return calendarDatePattern.test(calendarDate) && !calendarDate.startsWith('0000-') ? calendarDate : null
+}
+
+function replaceCalendarDate(previous, text) {
+  if (!(previous instanceof Date) || !calendarDatePattern.test(text)) throw new Error('Invalid date')
+  const day = Date.parse(text + 'T00:00:00.000Z')
+  if (!Number.isFinite(day) || new Date(day).toISOString().slice(0, 10) !== text || text.startsWith('0000-')) {
+    throw new Error('Invalid date')
+  }
+  if (text === datePickerValue(previous)) return previous
+
+  const original = previous.getTime()
+  const originalWallTime = original + offsetAt(original)
+  const timeOfDay = originalWallTime - Math.floor(originalWallTime / dayInMilliseconds) * dayInMilliseconds
+  const wallTime = day + timeOfDay
+  const before = offsetAt(wallTime - dayInMilliseconds)
+  const after = offsetAt(wallTime + dayInMilliseconds)
+  const earlier = wallTime - before
+  // Use the earlier occurrence of a repeated time and move forward through a skipped time.
+  return new Date(offsetAt(earlier) === before || before < after ? earlier : wallTime - after)
+}
 
 function formatDates(value) {
   if (value instanceof Date) return easternDate.format(value)
@@ -120,13 +160,17 @@ function oppositeEndpoints(links, endpoints) {
   }).filter(endpoint => !keys.has(endpointKey(endpoint)))
 }
 
-export function createApp(db) {
+export function createApp(db, { authorize, staticDirectory = dist } = {}) {
   const app = express()
   app.disable('x-powered-by')
   app.use('/api', (_req, res, next) => {
     res.set('Cache-Control', 'private, no-store')
     next()
   })
+  if (authorize) {
+    app.use('/api', authorize)
+    app.get('/api/access', (_req, res) => res.status(204).end())
+  }
 
   async function inventoryCollections() {
     const collections = await db.listCollections({ type: 'collection' }, { nameOnly: true }).toArray()
@@ -257,10 +301,13 @@ export function createApp(db) {
     const { record } = res.locals
     const data = serialize(record)
     if (req.query.edit !== '1') return res.json(data)
-    const editableFields = Object.fromEntries(Object.entries(record)
-      .filter(([name, value]) => canEditField(name, value))
+    const editableEntries = Object.entries(record).filter(([name, value]) => canEditField(name, value))
+    const editableFields = Object.fromEntries(editableEntries
       .map(([name, value]) => [name, editText(value)]))
-    res.json({ data, editableFields })
+    const dateFields = Object.fromEntries(editableEntries
+      .filter(([, value]) => value instanceof Date)
+      .map(([name, value]) => [name, datePickerValue(value)]))
+    res.json({ data, editableFields, dateFields })
   })
 
   app.get('/api/record/related', loadRecord, async (req, res) => {
@@ -293,7 +340,7 @@ export function createApp(db) {
 
   app.patch('/api/record', express.json(), loadRecord, async (req, res) => {
     const { record, records } = res.locals
-    const { name: requestedName, original, text } = req.body ?? {}
+    const { name: requestedName, original, text, calendarDate } = req.body ?? {}
     const adding = original === null
     if (typeof requestedName !== 'string' || typeof text !== 'string' || (!adding && typeof original !== 'string')) {
       return res.status(400).json({ error: 'Enter an attribute name and value.' })
@@ -315,7 +362,8 @@ export function createApp(db) {
     }
     let value
     try {
-      value = adding ? text : text === original ? previous : parseEdit(text, previous)
+      if (calendarDate === true) value = replaceCalendarDate(previous, text)
+      else value = adding ? text : text === original ? previous : parseEdit(text, previous)
     } catch {
       return res.status(400).json({ error: 'Enter a valid value using the format shown in the editor.' })
     }
@@ -337,12 +385,13 @@ export function createApp(db) {
       const error = adding ? duplicate : 'This value changed while you were editing it. Reload the record and try again.'
       return res.status(409).json({ error })
     }
-    res.json({ value: serialize(updated[name]), editText: editText(updated[name]) })
+    const updatedValue = updated[name]
+    res.json({ value: serialize(updatedValue), editText: editText(updatedValue), date: datePickerValue(updatedValue) })
   })
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint not found.' }))
-  app.use(express.static(dist))
-  app.get('/record', (_req, res) => res.sendFile('index.html', { root: dist }))
+  app.use(express.static(staticDirectory))
+  app.get('/record', (_req, res) => res.sendFile('index.html', { root: staticDirectory }))
 
   app.use((error, req, res, _next) => {
     if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'The edit request is invalid.' })

@@ -1,10 +1,19 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import '@ui-sdk/core/web.css'
 import './styles.css'
 
 const newAttribute = Symbol('new attribute')
+const renderBuild = import.meta.env.MODE === 'render'
+const FirebaseAccess = renderBuild ? lazy(() => import('./firebase.jsx')) : null
 
 async function request(path, options) {
+  if (renderBuild) {
+    const { inventoryAuthorization } = await import('./firebase.jsx')
+    const headers = new Headers(options?.headers)
+    headers.set('Authorization', await inventoryAuthorization())
+    options = { ...options, headers }
+  }
   const response = await fetch(path, options)
   const data = await response.json()
   if (!response.ok) throw new Error(data.error)
@@ -33,19 +42,50 @@ function Mark() {
   )
 }
 
+function ScrollableRows({ as: List, label, className = '', visibleRowLimit = 5, children }) {
+  const listRef = useRef(null)
+  const canScroll = children.length > visibleRowLimit
+
+  useLayoutEffect(() => {
+    const list = listRef.current
+    if (!canScroll) {
+      list.style.removeProperty('max-height')
+      return
+    }
+
+    const visibleRows = Array.from(list.children).slice(0, visibleRowLimit)
+    function updateHeight() {
+      const height = visibleRows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0)
+      list.style.maxHeight = `${height}px`
+    }
+
+    updateHeight()
+    const observer = new ResizeObserver(updateHeight)
+    visibleRows.forEach(row => observer.observe(row, { box: 'border-box' }))
+    return () => observer.disconnect()
+  }, [canScroll, visibleRowLimit, children])
+
+  return (
+    <List ref={listRef} className={canScroll ? `${className} scrollable-rows`.trim() : className}
+      tabIndex={canScroll ? 0 : undefined} aria-label={canScroll ? label : undefined}>
+      {children}
+    </List>
+  )
+}
+
 function CollectionLists({ groups }) {
   return (
     <div className="collections">
       {groups.map(({ collection, items }) => (
         <section className="panel collection" key={collection}>
           <h3>{collection}<small>{items.length}</small></h3>
-          <ul>
+          <ScrollableRows as="ul" label={collection}>
             {items.map(item => {
               const query = new URLSearchParams({ collection, id: item.id })
               if (item.bsonId) query.set('bsonId', item.bsonId)
               return <li key={item.bsonId ?? item.id}><a href={`/record?${query}`}>{item.description ?? item.id}</a></li>
             })}
-          </ul>
+          </ScrollableRows>
         </section>
       ))}
     </div>
@@ -129,10 +169,11 @@ function SearchPage() {
   )
 }
 
-function RecordFieldEditor({ name, editText, recordUrl, onSave, onCancel }) {
+function RecordFieldEditor({ name, editText, date, recordUrl, onSave, onCancel }) {
   const adding = name === undefined
+  const isDate = typeof date === 'string'
   const [draftName, setDraftName] = useState('')
-  const [draft, setDraft] = useState(editText ?? '')
+  const [draft, setDraft] = useState(date ?? editText ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
@@ -150,7 +191,12 @@ function RecordFieldEditor({ name, editText, recordUrl, onSave, onCancel }) {
       const field = await request(recordUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: fieldName, original: editText ?? null, text: draft }),
+        body: JSON.stringify({
+          name: fieldName,
+          original: editText ?? null,
+          text: draft,
+          ...(isDate && { calendarDate: true }),
+        }),
       })
       onSave(fieldName, field)
     } catch (error) {
@@ -169,10 +215,15 @@ function RecordFieldEditor({ name, editText, recordUrl, onSave, onCancel }) {
           autoFocus required readOnly={saving} onChange={event => setDraftName(event.target.value)} />
       )}
       <div className="field-editor field-editor-active">
-        <textarea aria-label={adding ? 'Attribute value' : `Edit ${name}`}
-          placeholder={adding ? 'Attribute value' : undefined} value={draft}
-          rows={editText?.includes('\n') ? 5 : 1} autoFocus={!adding} readOnly={saving}
-          onChange={event => setDraft(event.target.value)} />
+        {isDate ? (
+          <input type="date" aria-label={`Edit ${name}`} value={draft} autoFocus required readOnly={saving}
+            onChange={event => setDraft(event.target.value)} />
+        ) : (
+          <textarea aria-label={adding ? 'Attribute value' : `Edit ${name}`}
+            placeholder={adding ? 'Attribute value' : undefined} value={draft}
+            rows={editText?.includes('\n') ? 5 : 1} autoFocus={!adding} readOnly={saving}
+            onChange={event => setDraft(event.target.value)} />
+        )}
         <div className="field-actions">
           <button type="button" className="field-cancel"
             aria-label={adding ? 'Cancel adding attribute' : `Cancel editing ${name}`}
@@ -256,7 +307,7 @@ function RecordPage() {
               disabled={editingField !== null} onClick={() => setEditingField(newAttribute)}>+</button>
           </div>
           <div className="panel">
-            <dl className="fields">
+            <ScrollableRows as="dl" label="Record fields" className="fields" visibleRowLimit={10}>
               {[...new Set([...Object.keys(data), ...Object.keys(savedFields)])].map(name => {
                 const saved = Object.hasOwn(savedFields, name) ? savedFields[name] : null
                 const initialText = Object.hasOwn(record.editableFields, name) ? record.editableFields[name] : undefined
@@ -267,12 +318,13 @@ function RecordPage() {
                     onEdit={canStartEditing ? () => setEditingField(name) : undefined}>
                     {editingField === name ? (
                       <RecordFieldEditor name={name} editText={editText} recordUrl={recordUrl}
+                        date={saved ? saved.date : record.dateFields?.[name]}
                         onSave={saveField} onCancel={cancelEdit} />
                     ) : null}
                   </RecordField>
                 )
               })}
-            </dl>
+            </ScrollableRows>
             {editingField === newAttribute && (
               <RecordFieldEditor recordUrl={recordUrl} onSave={saveField} onCancel={cancelEdit} />
             )}
@@ -284,9 +336,17 @@ function RecordPage() {
   )
 }
 
+const page = window.location.pathname === '/record' ? <RecordPage /> : <SearchPage />
+
 createRoot(document.getElementById('root')).render(
   <>
     <header><div className="shell"><a className="brand" href="/"><Mark />Property Inventory</a></div></header>
-    <main className="shell">{window.location.pathname === '/record' ? <RecordPage /> : <SearchPage />}</main>
+    <main className="shell">
+      {renderBuild ? (
+        <Suspense fallback={<p role="status">Loading sign-in…</p>}>
+          <FirebaseAccess>{page}</FirebaseAccess>
+        </Suspense>
+      ) : page}
+    </main>
   </>,
 )

@@ -1,3 +1,8 @@
 node_modules/
 dist/
+dist-render/
 .env
+.DS_Store
+firebase-debug*.log
+.firebase/
+package-lock.json

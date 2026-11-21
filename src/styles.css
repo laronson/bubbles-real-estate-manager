@@ -48,6 +48,7 @@ main { padding-block: clamp(2rem, 6vw, 4.5rem) 4rem; }
 h1, h2, h3, p { margin: 0; }
 h1 { font-size: clamp(2.05rem, 5vw, 3.5rem); letter-spacing: -0.05em; line-height: 1.1; overflow-wrap: anywhere; }
 .intro p { margin-top: 0.75rem; color: var(--muted); }
+.inventory-account { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; }
 .panel { background: white; border: 1px solid var(--line); border-radius: 0.9rem; }
 
 .search {
@@ -106,6 +107,8 @@ button:disabled { background: #e1ece6; color: #4a6257; cursor: default; }
 }
 .collection h3 small { color: var(--muted); font-size: 0.875rem; font-weight: 500; }
 .collection ul { list-style: none; margin: 0; padding: 0; }
+.scrollable-rows { overflow-y: auto; scrollbar-gutter: stable; }
+.scrollable-rows:focus-visible { outline-offset: -2px; }
 .collection li + li { border-top: 1px solid var(--line); }
 .collection a {
   display: flex;
@@ -144,7 +147,7 @@ button:disabled { background: #e1ece6; color: #4a6257; cursor: default; }
   align-items: start;
   gap: 0.5rem 0.75rem;
 }
-.field-editor textarea, .field-add-row input {
+.field-editor textarea, .field-editor input, .field-add-row input {
   width: 100%;
   min-height: 2.25rem;
   padding: 0.35rem 0.55rem;
