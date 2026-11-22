@@ -152,8 +152,9 @@ h1 { font-size: clamp(2.05rem, 5vw, 3.5rem); letter-spacing: -0.05em; line-heigh
 .collection h3 small { color: var(--muted); font-size: 0.875rem; font-weight: 500; }
 .collection ul { list-style: none; margin: 0; padding: 0; }
 .row-scroll-area { border: 0; border-radius: inherit; font-size: inherit; }
+.collection .row-scroll-area { border-radius: 0; }
 .row-scroll-area [data-slot="scroll-area-content"] { padding: 0; }
-.row-scroll-area .scrollable-rows [data-slot="scroll-area-content"] { padding-inline-end: 0.625rem; }
+.scrollable-rows .fields[data-slot="scroll-area-content"] { padding-inline-end: 0.625rem; }
 .scrollable-rows:focus-visible { outline-offset: -2px; }
 .collection li + li { border-top: 1px solid var(--line); }
 .collection a {
@@ -161,9 +162,11 @@ h1 { font-size: clamp(2.05rem, 5vw, 3.5rem); letter-spacing: -0.05em; line-heigh
   align-items: center;
   min-height: 2.8rem;
   padding: 0.65rem 1rem;
+  border-radius: 0;
   text-decoration: none;
   overflow-wrap: anywhere;
 }
+.collection .scrollable-rows a { padding-inline-end: 1.625rem; }
 .collection a:hover { background: #f0f7f3; text-decoration: underline; }
 .collection a:focus-visible { outline-offset: -3px; }
 .feedback, .error { margin-top: 0.9rem; padding: 0.85rem 1rem; }
