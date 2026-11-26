@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 're
 import { createRoot } from 'react-dom/client'
 import { Button } from '@ui-sdk/react/button'
 import { DatePicker, DatePickerContent, DatePickerInput, DatePickerTrigger } from '@ui-sdk/react/date-picker'
+import { Drawer, DrawerBackdrop, DrawerClose, DrawerContent, DrawerTitle, DrawerTrigger } from '@ui-sdk/react/drawer'
 import { Field, FieldLabel } from '@ui-sdk/react/field'
 import { Input } from '@ui-sdk/react/input'
 import {
@@ -91,6 +92,12 @@ function ScrollableRows({ as: List, label, className = '', visibleRowLimit = 5, 
   )
 }
 
+function recordHref(collection, item) {
+  const query = new URLSearchParams({ collection, id: item.id })
+  if (item.bsonId) query.set('bsonId', item.bsonId)
+  return `/record?${query}`
+}
+
 function CollectionLists({ groups }) {
   return (
     <div className="collections">
@@ -98,15 +105,11 @@ function CollectionLists({ groups }) {
         <section className="panel collection" key={collection}>
           <h3>{collection}<small>{items.length}</small></h3>
           <ScrollableRows as="ul" label={collection}>
-            {items.map(item => {
-              const query = new URLSearchParams({ collection, id: item.id })
-              if (item.bsonId) query.set('bsonId', item.bsonId)
-              return (
-                <li key={item.bsonId ?? item.id}>
-                  <Button render={<a href={`/record?${query}`} />}>{item.description ?? item.id}</Button>
-                </li>
-              )
-            })}
+            {items.map(item => (
+              <li key={item.bsonId ?? item.id}>
+                <Button render={<a href={recordHref(collection, item)} />}>{item.description ?? item.id}</Button>
+              </li>
+            ))}
           </ScrollableRows>
         </section>
       ))}
@@ -388,12 +391,102 @@ function RecordPage() {
   )
 }
 
-const page = window.location.pathname === '/record' ? <RecordPage /> : <SearchPage />
+function ContactsPage() {
+  const { data: contacts, error, loading } = useResource('/api/contacts')
+  const [nameQuery, setNameQuery] = useState('')
+  const [selectedRole, setSelectedRole] = useState('')
+  const roles = [...new Set((contacts ?? []).flatMap(contact => contact.roles ?? []))]
+    .filter(role => typeof role === 'string' && role.trim())
+    .sort((a, b) => a.localeCompare(b))
+  const roleOptions = [
+    { value: '', label: 'All roles' },
+    ...roles.map(role => ({ value: role, label: role })),
+  ]
+  const matchingContacts = (contacts ?? []).filter(contact => {
+    const name = contact.name || contact.description || contact.id
+    return name.toLocaleLowerCase().includes(nameQuery.trim().toLocaleLowerCase()) &&
+      (!selectedRole || (contact.roles ?? []).includes(selectedRole))
+  })
+
+  return (
+    <>
+      <section className="intro"><h1>Contacts</h1></section>
+      <div className="panel contact-filters">
+        <Field>
+          <FieldLabel>Contact name</FieldLabel>
+          <Input type="search" placeholder="Search names" value={nameQuery} onValueChange={setNameQuery} />
+        </Field>
+        <PropertySelect label="Contact role" value={selectedRole} items={roleOptions}
+          disabled={loading || !!error} onValueChange={value => setSelectedRole(value ?? '')} />
+      </div>
+      {loading && <LoadingStatus>Loading contacts…</LoadingStatus>}
+      {error && <p role="alert" className="error">{error}</p>}
+      {contacts && (
+        <>
+          <p role="status">{matchingContacts.length} {matchingContacts.length === 1 ? 'contact' : 'contacts'}</p>
+          <div className="panel contact-table-scroll" role="region" aria-label="Contacts table" tabIndex={0}>
+            <table className="contact-table">
+              <caption className="visually-hidden">Contacts matching name and role filters</caption>
+              <thead><tr><th scope="col">Name</th><th scope="col">Role</th><th scope="col">Organization</th><th scope="col">Email</th><th scope="col">Phone</th></tr></thead>
+              <tbody>
+                {matchingContacts.map(contact => (
+                  <tr key={contact.bsonId ?? contact.id}>
+                    <th scope="row">
+                      <a className="contact-name" href={recordHref('contacts', contact)}>
+                        {contact.name || contact.description || contact.id}
+                      </a>
+                    </th>
+                    <td>{contact.roles?.join(', ') || '—'}</td>
+                    <td>{contact.organization || '—'}</td>
+                    <td>{contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : '—'}</td>
+                    <td>{contact.phone ? (
+                      <a href={`tel:${contact.phone}${contact.extension ? `;ext=${contact.extension}` : ''}`}>
+                        {contact.phone}{contact.extension && ` ext. ${contact.extension}`}
+                      </a>
+                    ) : '—'}</td>
+                  </tr>
+                ))}
+                {matchingContacts.length === 0 && (
+                  <tr><td colSpan={5}>{contacts.length ? 'No contacts match these filters.' : 'No contacts found.'}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
+const pathname = window.location.pathname.replace(/\/$/, '') || '/'
+const page = pathname === '/contacts' ? <ContactsPage /> : pathname === '/record' ? <RecordPage /> : <SearchPage />
+
+function Navigation() {
+  return (
+    <Drawer side="left" preventEdgeSwipe>
+      <DrawerTrigger className="nav-trigger" aria-label="Open navigation">
+        <span aria-hidden="true"><i /><i /><i /></span>
+      </DrawerTrigger>
+      <DrawerBackdrop />
+      <DrawerContent className="nav-drawer">
+        <div className="nav-heading">
+          <DrawerTitle>Navigation</DrawerTitle>
+          <DrawerClose aria-label="Close navigation">×</DrawerClose>
+        </div>
+        <nav aria-label="Main navigation">
+          <a href="/" aria-current={pathname === '/' ? 'page' : undefined}>Building search</a>
+          <a href="/contacts" aria-current={pathname === '/contacts' ? 'page' : undefined}>Contacts</a>
+        </nav>
+      </DrawerContent>
+    </Drawer>
+  )
+}
 
 createRoot(document.getElementById('root')).render(
   <>
     <header>
-      <div className="shell">
+      <div className="shell site-bar">
+        <Navigation />
         <Button className="brand" render={<a href="/" />}><Mark />Property Inventory</Button>
       </div>
     </header>

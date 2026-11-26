@@ -29,6 +29,12 @@ Add these environment variables in Render:
 
 In Firebase Authentication, add the Render hostname and any custom frontend hostname under **Settings → Authorized domains**. In Atlas Network Access, add the outbound IP ranges shown under **Connect → Outbound** for the Render service. Verify that a signed-out `/api/access` request returns HTTP 401, then sign in as an approved user and run a search.
 
+## Manage inventory access with Google Workspace
+
+On Compute Engine, set `INVENTORY_GOOGLE_GROUP` to the Cloud Identity resource name (`groups/GROUP_ID`) of a dedicated, invitation-only Google Workspace group. The app checks direct membership for the verified Google account on each protected API request. When this setting is present, group membership is the source of access. Deployments without the setting use `INVENTORY_ALLOWED_EMAILS`.
+
+Enable the Cloud Identity API and give the VM's service account permission to view membership in that group. The app uses Application Default Credentials. Add the currently approved users to the group before switching production, then test with a member and a non-member. After the switch, add or remove users in Google Workspace without restarting the service.
+
 ## Search behavior
 
 - Buildings and standalone units load as dropdown options. A `building_unit` relationship determines which building a unit belongs to. The inventory query runs on form submission.

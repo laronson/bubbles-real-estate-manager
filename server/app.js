@@ -160,6 +160,13 @@ function oppositeEndpoints(links, endpoints) {
   }).filter(endpoint => !keys.has(endpointKey(endpoint)))
 }
 
+function recordIdentity(_id) {
+  return {
+    id: String(_id),
+    ...(typeof _id === 'string' ? {} : { bsonId: EJSON.stringify(_id, { relaxed: false }) }),
+  }
+}
+
 export function createApp(db, { authorize, staticDirectory = dist } = {}) {
   const app = express()
   app.disable('x-powered-by')
@@ -202,14 +209,25 @@ export function createApp(db, { authorize, staticDirectory = dist } = {}) {
         .sort({ description: 1, _id: 1 })
         .toArray()
       const items = records.map(({ _id, description }) => ({
-        id: String(_id),
-        ...(typeof _id === 'string' ? {} : { bsonId: EJSON.stringify(_id, { relaxed: false }) }),
+        ...recordIdentity(_id),
         description,
       }))
       return { collection, items }
     }))
     return groups.filter(({ items }) => items.length)
   }
+
+  app.get('/api/contacts', async (_req, res) => {
+    const contacts = await db.collection('contacts')
+      .find({}, {
+        projection: { name: 1, description: 1, organization: 1, roles: 1, email: 1, phone: 1, extension: 1 },
+        promoteValues: false,
+      })
+      .collation({ locale: 'en', strength: 2 })
+      .sort({ name: 1, _id: 1 })
+      .toArray()
+    res.json(contacts.map(({ _id, ...contact }) => ({ ...recordIdentity(_id), ...contact })))
+  })
 
   app.get('/api/buildings', async (_req, res) => {
     const buildings = await db.collection(buildingCollection)
@@ -391,7 +409,7 @@ export function createApp(db, { authorize, staticDirectory = dist } = {}) {
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint not found.' }))
   app.use(express.static(staticDirectory))
-  app.get('/record', (_req, res) => res.sendFile('index.html', { root: staticDirectory }))
+  app.get(['/record', '/contacts'], (_req, res) => res.sendFile('index.html', { root: staticDirectory }))
 
   app.use((error, req, res, _next) => {
     if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'The edit request is invalid.' })
