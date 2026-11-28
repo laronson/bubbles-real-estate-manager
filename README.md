@@ -24,16 +24,13 @@ Create one Node Web Service on the Free plan. Express serves the React app and `
 Add these environment variables in Render:
 
 - `MONGODB_URI` holds the Atlas connection string.
-- `INVENTORY_ALLOWED_EMAILS` holds a comma-separated list of approved Google account email addresses.
 - `VITE_FIREBASE_PROJECT_ID` and `VITE_FIREBASE_API_KEY` come from the Firebase web app configuration in Project settings. These two values are public web configuration.
 
-In Firebase Authentication, add the Render hostname and any custom frontend hostname under **Settings → Authorized domains**. In Atlas Network Access, add the outbound IP ranges shown under **Connect → Outbound** for the Render service. Verify that a signed-out `/api/access` request returns HTTP 401, then sign in as an approved user and run a search.
+In Firebase Authentication, add the Render hostname and any custom frontend hostname under **Settings → Authorized domains**. In Atlas Network Access, add the outbound IP ranges shown under **Connect → Outbound** for the Render service. Verify that a signed-out `/api/access` request returns HTTP 401, then sign in with Google and run a search.
 
-## Manage inventory access with Google Workspace
+## Inventory access
 
-On Compute Engine, set `INVENTORY_GOOGLE_GROUP` to the Cloud Identity resource name (`groups/GROUP_ID`) of a dedicated, invitation-only Google Workspace group. The app checks direct membership for the verified Google account on each protected API request. When this setting is present, group membership is the source of access. Deployments without the setting use `INVENTORY_ALLOWED_EMAILS`.
-
-Enable the Cloud Identity API and give the VM's service account permission to view membership in that group. The app uses Application Default Credentials. Add the currently approved users to the group before switching production, then test with a member and a non-member. After the switch, add or remove users in Google Workspace without restarting the service.
+Every verified Google account that successfully signs in through the configured Firebase project has full site access. The server verifies the Firebase ID token on each protected API request. The application requires no email allowlist or Google group setting. Manage any restrictions on Google sign-in in your Google/Firebase configuration.
 
 ## Search behavior
 
