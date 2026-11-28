@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectTrigger, SelectValue } from '@ui-sdk/react
 import { Textarea } from '@ui-sdk/react/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@ui-sdk/react/tooltip'
 import { LoadingStatus } from './loading-status.jsx'
+import { InventoryChat } from './inventory-chat.jsx'
 import '@ui-sdk/core/web.css'
 import './styles.css'
 
@@ -458,8 +459,15 @@ function ContactsPage() {
   )
 }
 
+function InventoryChatPage() {
+  const availability = useResource('/api/inventory-chat')
+  return <InventoryChat request={request} recordHref={recordHref} availability={availability} />
+}
+
 const pathname = window.location.pathname.replace(/\/$/, '') || '/'
-const page = pathname === '/contacts' ? <ContactsPage /> : pathname === '/record' ? <RecordPage /> : <SearchPage />
+const pages = { '/contacts': ContactsPage, '/record': RecordPage, '/inventory-chat': InventoryChatPage }
+const Page = pages[pathname] ?? SearchPage
+const page = <Page />
 
 function Navigation() {
   return (
@@ -476,6 +484,7 @@ function Navigation() {
         <nav aria-label="Main navigation">
           <a href="/" aria-current={pathname === '/' ? 'page' : undefined}>Building search</a>
           <a href="/contacts" aria-current={pathname === '/contacts' ? 'page' : undefined}>Contacts</a>
+          <a href="/inventory-chat" aria-current={pathname === '/inventory-chat' ? 'page' : undefined}>Inventory chat</a>
         </nav>
       </DrawerContent>
     </Drawer>

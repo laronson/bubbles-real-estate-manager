@@ -13,7 +13,10 @@ export function requireInventoryAccess(verifyIdToken, hasAccess) {
     const email = claims.email?.toLowerCase()
     if (claims.firebase?.sign_in_provider === 'google.com' && claims.email_verified === true && email) {
       try {
-        if (await hasAccess(email)) return next()
+        if (await hasAccess(email)) {
+          res.locals.inventoryUser = claims.uid ?? email
+          return next()
+        }
       } catch (error) {
         console.error('Inventory access lookup failed:', error.message)
         return res.status(503).json({ error: 'Could not verify inventory access. Try again shortly.' })

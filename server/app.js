@@ -1,6 +1,7 @@
 import express from 'express'
 import { BSON, Double, Int32, ObjectId } from 'mongodb'
 import { fileURLToPath } from 'node:url'
+import { inventoryChatFromEnv, inventoryChatRoutes } from './inventory-chat.js'
 
 const dist = fileURLToPath(new URL('../dist/', import.meta.url))
 const { EJSON } = BSON
@@ -167,7 +168,7 @@ function recordIdentity(_id) {
   }
 }
 
-export function createApp(db, { authorize, staticDirectory = dist } = {}) {
+export function createApp(db, { authorize, staticDirectory = dist, inventoryChat = inventoryChatFromEnv() } = {}) {
   const app = express()
   app.disable('x-powered-by')
   app.use('/api', (_req, res, next) => {
@@ -178,6 +179,7 @@ export function createApp(db, { authorize, staticDirectory = dist } = {}) {
     app.use('/api', authorize)
     app.get('/api/access', (_req, res) => res.status(204).end())
   }
+  app.use('/api/inventory-chat', inventoryChatRoutes(db, inventoryChat))
 
   async function inventoryCollections() {
     const collections = await db.listCollections({ type: 'collection' }, { nameOnly: true }).toArray()
@@ -409,7 +411,7 @@ export function createApp(db, { authorize, staticDirectory = dist } = {}) {
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint not found.' }))
   app.use(express.static(staticDirectory))
-  app.get(['/record', '/contacts'], (_req, res) => res.sendFile('index.html', { root: staticDirectory }))
+  app.get(['/record', '/contacts', '/inventory-chat'], (_req, res) => res.sendFile('index.html', { root: staticDirectory }))
 
   app.use((error, req, res, _next) => {
     if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'The edit request is invalid.' })

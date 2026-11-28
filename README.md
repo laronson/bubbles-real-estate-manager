@@ -35,6 +35,14 @@ On Compute Engine, set `INVENTORY_GOOGLE_GROUP` to the Cloud Identity resource n
 
 Enable the Cloud Identity API and give the VM's service account permission to view membership in that group. The app uses Application Default Credentials. Add the currently approved users to the group before switching production, then test with a member and a non-member. After the switch, add or remove users in Google Workspace without restarting the service.
 
+## Add records with inventory chat
+
+Set `OPENAI_API_KEY` in the backend environment (`.env` locally or the web service's environment on Render). The default model is `gpt-6.1-terra`. Set `OPENAI_INVENTORY_MODEL` to use another Responses API model that supports function calling and low reasoning effort. The app sends the conversation and relevant inventory lookup results to OpenAI. The API key stays on the server.
+
+Open **Inventory chat** from the website navigation. Describe a single new record, such as “Add a microwave to unit 3L.” Answer any follow-up questions, then review the collection, fields, and links and select **Save entry**. The assistant uses a bundled adaptation of the Real Estate Inventory Add Entry skill and the website's Atlas connection. It links to the record after MongoDB verifies the write.
+
+The Atlas user needs permission to insert into the destination and `relationships` collections. Adding new categories or missing relationship indexes also requires permission to create collections and indexes. Saves use a MongoDB transaction, which requires a replica set or sharded cluster.
+
 ## Search behavior
 
 - Buildings and standalone units load as dropdown options. A `building_unit` relationship determines which building a unit belongs to. The inventory query runs on form submission.
